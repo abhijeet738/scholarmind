@@ -1,0 +1,37 @@
+name: Deploy to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'  # Only trigger if backend code changes
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+      
+      - name: Push to HF Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Configure Git
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          
+          # Clone the HF Space repo (replace YOUR_USERNAME/scholarmind later)
+          git clone https://huggingface.co/spaces/${{ secrets.HF_USERNAME }}/scholarmind space_repo
+          cd space_repo
+          
+          # Copy backend files over (ignoring github folder)
+          rsync -av --exclude='.git' --exclude='.github' ../backend/ ./
+          
+          # Commit and push
+          git add .
+          git commit -m "Auto-deploy from GitHub Actions" || echo "No changes to commit"
+          git push https://${{ secrets.HF_USERNAME }}:${HF_TOKEN}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/scholarmind main
