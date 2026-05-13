@@ -23,7 +23,7 @@ jobs:
           git config --global user.name "GitHub Actions"
           
           # Clone the HF Space repo
-          git clone https://${{ secrets.HF_USERNAME }}:${HF_TOKEN}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/scholarmind space_repo
+          git clone https://user:${HF_TOKEN}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/scholarmind space_repo
           cd space_repo
           
           # Copy backend files over (ignoring github folder)
@@ -32,4 +32,4 @@ jobs:
           # Commit and push
           git add .
           git commit -m "Auto-deploy from GitHub Actions" || echo "No changes to commit"
-          git push https://${{ secrets.HF_USERNAME }}:${HF_TOKEN}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/scholarmind main
+          git push https://user:${HF_TOKEN}@huggingface.co/spaces/${{ secrets.HF_USERNAME }}/scholarmind main
