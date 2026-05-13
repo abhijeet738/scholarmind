@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'backend/**'  # Only trigger if backend code changes
 
 jobs:
   sync-to-hub:
