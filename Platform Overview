@@ -1,0 +1,55 @@
+What Scholarmind actually does:
+ScholarMind (Semantic Search and Research Intelligence Engine) solves the problem of information overload in massive document repositories. Instead of a basic search bar that only matches exact keywords, it acts as an intelligent research assistant by understanding the context and intent behind a search. It actively "reads" relevant documents, generates a comprehensive cited summary, visually maps connections between topics, and learns from user interactions to proactively recommend documents.
+
+Core Features:
+
+-> Hybrid Search Engine
+   - BM25 Sparse Retrieval: Handles exact-keyword matching.
+   - Dense Vector Retrieval: Uses Transformer models to convert text into numbers and store them in pgvector.
+   - Cross-Encoder Re-ranking: Re-scores top results for maximum accuracy.
+
+-> Agentic RAG
+   - LangGraph Orchestration: A multi-agent AI workflow that routes queries intelligently.
+   - Corrective RAG (CRAG): Evaluates retrieved documents and rejects them if they don't contain the answer to avoid hallucination.
+
+-> Knowledge Graph & Topic Modeling
+   - Graph Relationships: Uses network algorithms to group related documents.
+   - BERTopic Integration: Automatically identifies and extracts core themes.
+
+-> Personalized Discovery
+   - User Taste Vectors: Logs interactions to build a profile of interests.
+   - Session-based Recommendations: Re-ranks results and populates a "For You" feed.
+
+High-Level Architecture
+
+-----------------------------------------------------
+|                    USER REQUEST                   |
+|   (search / review / novelty / consensus / gaps)  |
+-----------------------------------------------------
+                          |
+                          v
+-----------------------------------------------------
+|             FastAPI Backend (13 routers)          |
+|            Deployed on HF Spaces via CI/CD        |
+-----------------------------------------------------
+                          |
+        ---------------------------------------
+        |                 |                   |
+        v                 v                   v
+----------------   ----------------   -----------------
+| SEARCH ENGINE|   | LANGGRAPH    |   | KNOWLEDGE     |
+|              |   | AGENT        |   | LAYER         |
+| - BM25       |   | - Query      |   | - Citation    |
+| - pgvector   |   |   Analysis   |   |   Graph       |
+| - Cross-     |   | - Synthesis  |   | - BERTopic    |
+|   Encoder    |   | - CRAG       |   | - Clustering  |
+----------------   ----------------   -----------------
+
+User-System Interaction Flow:
+-> User enters a complex question into the React frontend.
+-> The LangGraph Agent analyzes the query intent.
+-> The system retrieves ~100 documents using pgvector and BM25.
+-> The Cross-Encoder re-ranks to find the absolute best 10 documents.
+-> The LLM reads the 10 documents and synthesizes a cited answer.
+-> The user sees the answer and a visual Knowledge Graph.
+-> As the user clicks documents, the backend updates their taste vector.
