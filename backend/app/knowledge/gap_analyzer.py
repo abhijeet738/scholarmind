@@ -1,95 +1,94 @@
 """
-ScholarMind — Research Gap Analyzer
+ScholarMind — Research Gap Analyzer (Knowledge Graph Version)
 
-Finds under-explored intersections between popular research topics.
-Uses BERTopic clusters + entity co-occurrence. No LLM needed.
+Finds under-explored intersections between popular research topics by analyzing
+the semantic edges in the pre-computed SciBERT Knowledge Graph.
 
 gap_score(i, j) = popularity(i) × popularity(j) / (co_occurrence(i,j) + 1)
-High gap_score = popular topics rarely combined = research opportunity.
+High gap_score = popular topics that are rarely connected by semantic edges = research opportunity.
 """
 
+import os
+import pickle
 from collections import Counter, defaultdict
 
-from app.db.database import get_supabase_client
+_graph_cache = None
+
+def get_graph_data():
+    """Lazy-load the knowledge graph from disk."""
+    global _graph_cache
+    if _graph_cache is None:
+        file_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "knowledge_graph.pkl")
+        if os.path.exists(file_path):
+            print("Loading SciBERT Knowledge Graph...")
+            with open(file_path, "rb") as f:
+                _graph_cache = pickle.load(f)
+        else:
+            print(f"Warning: Graph file not found at {file_path}")
+            _graph_cache = {}
+    return _graph_cache
 
 
 def compute_research_gaps(limit: int = 20) -> list[dict]:
     """
-    Compute research gaps from topic co-occurrence.
-
-    Returns list of (topic_a, topic_b, gap_score) sorted by gap_score desc.
+    Compute research gaps from topic co-occurrence along Graph Edges.
     """
-    supabase = get_supabase_client()
-
-    # Get all papers with topic assignments
-    response = (
-        supabase.table("papers")
-        .select("paper_id, topic_id, topic_label")
-        .not_.is_("topic_id", "null")
-        .execute()
-    )
-
-    papers = response.data
-    if not papers:
+    data = get_graph_data()
+    if not data or "topics" not in data or "graph" not in data:
         return []
 
-    # Count topic popularity
+    G = data["graph"]
+    topics_dict = data["topics"]
+    topic_info_list = topics_dict.get("topic_info", [])
+    paper_topics = topics_dict.get("paper_topics", {})
+
+    # Extract topic popularity and names
     topic_counts = Counter()
     topic_labels = {}
-    paper_topics = defaultdict(set)
-
-    for p in papers:
-        tid = p["topic_id"]
+    
+    for t_info in topic_info_list:
+        tid = t_info["Topic"]
         if tid == -1:  # skip outlier topic
             continue
-        topic_counts[tid] += 1
-        topic_labels[tid] = p.get("topic_label", f"Topic {tid}")
-        paper_topics[p["paper_id"]].add(tid)
+        topic_counts[tid] = t_info["Count"]
+        # Make the label look pretty (remove the leading ID)
+        raw_name = t_info.get("Name", f"Topic {tid}")
+        clean_name = raw_name.split("_", 1)[1].replace("_", " ").title() if "_" in raw_name else raw_name
+        topic_labels[tid] = clean_name
 
-    # Get entity co-occurrence: papers sharing entities from different topics
-    # A simpler proxy: count papers that have multiple topics via shared entities
-    entity_response = (
-        supabase.table("entities")
-        .select("paper_id, canonical_name")
-        .execute()
-    )
-
-    # Build entity → papers mapping
-    entity_papers = defaultdict(set)
-    for e in entity_response.data:
-        entity_papers[e["canonical_name"]].add(e["paper_id"])
-
-    # Count co-occurrence: how many papers share entities between two topics
+    # Count co-occurrence: how many semantic edges connect two different topics
     co_occurrence = Counter()
-    topic_ids = list(topic_counts.keys())
-
-    # For each entity, find which topics it appears in
-    entity_topics = defaultdict(set)
-    for entity, pids in entity_papers.items():
-        for pid in pids:
-            for tid in paper_topics.get(pid, set()):
-                entity_topics[entity].add(tid)
-
-    # Count pairs of topics that share entities
-    for entity, tids in entity_topics.items():
-        tids_list = sorted(tids)
-        for i in range(len(tids_list)):
-            for j in range(i + 1, len(tids_list)):
-                co_occurrence[(tids_list[i], tids_list[j])] += 1
+    
+    for u, v in G.edges():
+        tid_u = paper_topics.get(u, -1)
+        tid_v = paper_topics.get(v, -1)
+        
+        # We only care about connections between DIFFERENT topics (ignoring outliers)
+        if tid_u != -1 and tid_v != -1 and tid_u != tid_v:
+            # Sort to ensure (A, B) is identical to (B, A)
+            pair = tuple(sorted([tid_u, tid_v]))
+            co_occurrence[pair] += 1
 
     # Compute gap scores
     gaps = []
+    topic_ids = list(topic_counts.keys())
+    
     for i in range(len(topic_ids)):
         for j in range(i + 1, len(topic_ids)):
             tid_a, tid_b = topic_ids[i], topic_ids[j]
             pop_a = topic_counts[tid_a]
             pop_b = topic_counts[tid_b]
 
-            # Only consider topics with decent popularity (>20 papers)
-            if pop_a < 20 or pop_b < 20:
+            # Only consider topics with decent popularity (>50 papers)
+            # to avoid false 'gaps' from ultra-niche micro topics
+            if pop_a < 50 or pop_b < 50:
                 continue
 
-            co_occ = co_occurrence.get((tid_a, tid_b), 0) + co_occurrence.get((tid_b, tid_a), 0)
+            # The pair is always sorted
+            pair = tuple(sorted([tid_a, tid_b]))
+            co_occ = co_occurrence.get(pair, 0)
+            
+            # gap score formula
             gap_score = (pop_a * pop_b) / (co_occ + 1)
 
             gaps.append({
@@ -99,7 +98,7 @@ def compute_research_gaps(limit: int = 20) -> list[dict]:
                 "topic_b": topic_labels.get(tid_b, f"Topic {tid_b}"),
                 "topic_b_id": tid_b,
                 "topic_b_papers": pop_b,
-                "co_occurrence": co_occ,
+                "co_occurrence": co_occ, # semantic bridges between them
                 "gap_score": round(gap_score, 1),
             })
 

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "ScholarMind"
+    environment: str = "development"
     debug: bool = False
 
     # Supabase
